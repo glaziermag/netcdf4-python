@@ -1,0 +1,96 @@
+name: AB plugin path
+on: workflow_dispatch
+
+jobs:
+  serial:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        mode: [asis, fixed, unset]
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        submodules: true
+
+    - name: Setup Micromamba
+      uses: mamba-org/setup-micromamba@v3
+      with:
+        environment-name: TEST
+        init-shell: bash
+        create-args: >-
+          python=3.12
+          numpy cython pip setuptools pytest hdf5 libnetcdf cftime zlib certifi typing-extensions
+          --channel conda-forge
+
+    - name: Install netcdf4-python
+      run: |
+        export PATH="${CONDA_PREFIX}/bin:${CONDA_PREFIX}/Library/bin:$PATH" # so setup.py finds nc-config
+        python -m pip install -v -e . --no-deps --no-build-isolation --force-reinstall
+
+    - name: Diagnostics
+      run: |
+        echo "=== H5_DEFAULT_PLUGINDIR baked into conda-forge hdf5:"
+        grep H5_DEFAULT_PLUGINDIR "${CONDA_PREFIX}/include/H5pubconf.h" || true
+        echo "=== ls of the path miniconda.yml currently exports (hdf5/lib/plugin):"
+        ls -la "${CONDA_PREFIX}/hdf5/lib/plugin/" 2>&1 || true
+        echo "=== ls of H5 default plugindir (lib/hdf5/plugin):"
+        ls -la "${CONDA_PREFIX}/lib/hdf5/plugin" 2>&1 || true
+
+    - name: Tests
+      run: |
+        if [ "${{ matrix.mode }}" == "asis" ]; then
+           export HDF5_PLUGIN_PATH="${CONDA_PREFIX}/hdf5/lib/plugin/"
+        elif [ "${{ matrix.mode }}" == "fixed" ]; then
+           export HDF5_PLUGIN_PATH="${CONDA_PREFIX}/lib/hdf5/plugin"
+        fi
+        echo "mode=${{ matrix.mode }} HDF5_PLUGIN_PATH=${HDF5_PLUGIN_PATH:-<unset>}"
+        pytest -s -rxs -v test
+
+  mpi:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [asis, fixed]
+    defaults:
+      run:
+        shell: bash -l {0}
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        submodules: true
+
+    - name: Setup Micromamba
+      uses: mamba-org/setup-micromamba@v3
+      with:
+        environment-name: TEST
+        init-shell: bash
+        create-args: >-
+          python=3.12
+          numpy cython pip pytest openmpi mpi4py hdf5=*=mpi* libnetcdf=*=mpi* cftime zlib certifi typing-extensions
+          --channel conda-forge
+
+    - name: Install netcdf4-python with mpi
+      run: |
+        export PATH="${CONDA_PREFIX}/bin:${CONDA_PREFIX}/Library/bin:$PATH" # so setup.py finds nc-config
+        nc-config --all
+        python -m pip install -v -e . --no-build-isolation --no-deps --force-reinstall
+
+    - name: Diagnostics
+      run: |
+        grep H5_DEFAULT_PLUGINDIR "${CONDA_PREFIX}/include/H5pubconf.h" || true
+        echo "=== ls lib/hdf5/plugin (mpi variant):"
+        ls -la "${CONDA_PREFIX}/lib/hdf5/plugin" 2>&1 || true
+
+    - name: Tests
+      run: |
+        if [ "${{ matrix.mode }}" == "fixed" ]; then
+           export HDF5_PLUGIN_PATH="${CONDA_PREFIX}/lib/hdf5/plugin"
+        fi
+        echo "mode=${{ matrix.mode }} HDF5_PLUGIN_PATH=${HDF5_PLUGIN_PATH:-<unset>}"
+        pytest -s -rxs -v test
