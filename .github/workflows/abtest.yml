@@ -46,7 +46,7 @@ jobs:
         if [ "${{ matrix.mode }}" == "asis" ]; then
            export HDF5_PLUGIN_PATH="${CONDA_PREFIX}/hdf5/lib/plugin/"
         elif [ "${{ matrix.mode }}" == "fixed" ]; then
-           export HDF5_PLUGIN_PATH="${CONDA_PREFIX}/lib/hdf5/plugin"
+           export HDF5_PLUGIN_PATH="${CONDA_PREFIX}/lib/hdf5/plugin/"
         fi
         echo "mode=${{ matrix.mode }} HDF5_PLUGIN_PATH=${HDF5_PLUGIN_PATH:-<unset>}"
         pytest -s -rxs -v test
